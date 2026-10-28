@@ -12,6 +12,7 @@ import { startServer, stopServer } from "./index.js";
 import { verifyClaude, verifyAuth } from "../subprocess/manager.js";
 
 const DEFAULT_PORT = 3456;
+const DEFAULT_HOST = "127.0.0.1";
 
 async function main(): Promise<void> {
   console.log("Claude Code CLI Provider - Standalone Server");
@@ -21,6 +22,16 @@ async function main(): Promise<void> {
   const port = parseInt(process.argv[2] || String(DEFAULT_PORT), 10);
   if (isNaN(port) || port < 1 || port > 65535) {
     console.error(`Invalid port: ${process.argv[2]}`);
+    process.exit(1);
+  }
+
+  // Bind address (set HOST=0.0.0.0 inside a container)
+  const host = process.env.HOST || DEFAULT_HOST;
+
+  // Refuse to expose the API beyond loopback without a key
+  const isLoopback = host === "127.0.0.1" || host === "::1" || host === "localhost";
+  if (!isLoopback && !process.env.API_KEY) {
+    console.error(`Error: API_KEY must be set when listening on ${host}`);
     process.exit(1);
   }
 
@@ -45,10 +56,13 @@ async function main(): Promise<void> {
 
   // Start server
   try {
-    await startServer({ port });
+    await startServer({ port, host });
     console.log("\nServer ready. Test with:");
     console.log(`  curl -X POST http://localhost:${port}/v1/chat/completions \\`);
     console.log(`    -H "Content-Type: application/json" \\`);
+    if (process.env.API_KEY) {
+      console.log(`    -H "Authorization: Bearer $API_KEY" \\`);
+    }
     console.log(`    -d '{"model": "claude-sonnet-4", "messages": [{"role": "user", "content": "Hello!"}]}'`);
     console.log("\nPress Ctrl+C to stop.\n");
   } catch (err) {

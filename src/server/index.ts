@@ -6,6 +6,7 @@
 
 import express, { Express, Request, Response, NextFunction } from "express";
 import { createServer, Server } from "http";
+import { createHash, timingSafeEqual } from "crypto";
 import { handleChatCompletions, handleModels, handleHealth } from "./routes.js";
 
 export interface ServerConfig {
@@ -20,6 +21,34 @@ let serverInstance: Server | null = null;
  */
 function createApp(): Express {
   const app = express();
+
+  // Optional API key auth: API_KEY="..." (clients send "Authorization: Bearer <key>")
+  const apiKey = process.env.API_KEY || "";
+  if (apiKey) {
+    console.log("[Server] API key authentication enabled");
+    const expected = createHash("sha256").update(apiKey).digest();
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      // CORS preflight never carries credentials
+      if (req.method === "OPTIONS") {
+        return next();
+      }
+      const match = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || "");
+      const provided = createHash("sha256").update(match ? match[1].trim() : "").digest();
+      // Compare fixed-length digests in constant time
+      if (match && timingSafeEqual(provided, expected)) {
+        return next();
+      }
+      const ip = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
+      console.warn(`[Server] Rejected unauthenticated request from ${ip}`);
+      res.status(401).json({
+        error: {
+          message: "Invalid or missing API key",
+          type: "invalid_request_error",
+          code: "invalid_api_key",
+        },
+      });
+    });
+  }
 
   // Middleware: use raw body parser + manual JSON parse for better error diagnostics
   app.use(express.raw({ type: "application/json", limit: "10mb" }));

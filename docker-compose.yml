@@ -1,0 +1,60 @@
+services:
+  claude-proxy:
+    build: .
+    image: claude-max-api-proxy
+    container_name: claude-max-api-proxy
+    restart: unless-stopped
+    # Not published: reachable only through Caddy on the internal network
+    expose:
+      - "3456"
+    environment:
+      # Required: clients send "Authorization: Bearer <API_KEY>" (put it in .env)
+      - API_KEY=${API_KEY:?set API_KEY in .env}
+      # Optional: long-lived token from `claude setup-token` (put it in .env)
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+    volumes:
+      # Claude auth/config lives only in this Docker-managed volume.
+      # No host directories are mounted.
+      - claude-config:/home/node/.claude
+    tmpfs:
+      - /tmp
+      - /workspace:uid=1000,gid=1000
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # HTTPS termination in front of the proxy
+  caddy:
+    image: caddy:2.10-alpine
+    container_name: claude-max-api-caddy
+    restart: unless-stopped
+    depends_on:
+      - claude-proxy
+    # Published only on the host's LAN address (set BIND_IP in .env)
+    ports:
+      - "${BIND_IP:-127.0.0.1}:443:8443"
+    environment:
+      - BIND_IP=${BIND_IP:-127.0.0.1}
+      - TLS_HOSTNAME=${TLS_HOSTNAME:-dellone.local}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Local CA root key and certificates; keep this volume
+      - caddy-data:/data
+      - caddy-config:/config
+    tmpfs:
+      - /tmp
+    read_only: true
+    cap_drop:
+      - ALL
+    # The image's caddy binary carries this file capability and won't exec without it
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  claude-config:
+  caddy-data:
+  caddy-config:

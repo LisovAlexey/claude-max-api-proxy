@@ -1,0 +1,20 @@
+{
+	# No admin API; restart the container to apply config changes
+	admin off
+	# Unprivileged ports inside the container (no NET_BIND_SERVICE needed)
+	http_port 8080
+	https_port 8443
+	auto_https disable_redirects
+	# Clients connecting by IP send no SNI
+	default_sni {$BIND_IP}
+	skip_install_trust
+}
+
+https://{$BIND_IP}, https://{$TLS_HOSTNAME:dellone.local} {
+	# Certificates from Caddy's own local CA; install its root on each client
+	tls internal
+	reverse_proxy claude-proxy:3456 {
+		# Stream SSE chunks immediately
+		flush_interval -1
+	}
+}

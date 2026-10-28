@@ -77,6 +77,22 @@ npm install
 npm run build
 ```
 
+## Running in Docker (isolated)
+
+The container has no access to host files: nothing from the host is mounted, the root filesystem is read-only, the CLI works in an empty in-memory `/workspace`, and the port is published only on `127.0.0.1`. Claude credentials live in a Docker-managed volume (`claude-config`).
+
+```bash
+docker compose build
+docker compose up -d
+
+# One-time login (stored in the claude-config volume)
+docker compose exec -it claude-proxy claude auth login
+```
+
+Alternatively, create a long-lived token with `claude setup-token` and put it in `.env` as `CLAUDE_CODE_OAUTH_TOKEN=...`, then `docker compose up -d`.
+
+To pin the CLI version: `docker compose build --build-arg CLAUDE_CODE_VERSION=2.1.311`.
+
 ## Usage
 
 ### Start the server
